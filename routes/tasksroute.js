@@ -1,5 +1,6 @@
 const router= require('express').Router();
-const {createTask, getTasks,getTaskById, updateTask, deleteTask}= require("../controllers/taskController")
+const {createTask, getTasks,getTaskById, updateTask, deleteTask}= require("../controllers/taskController");
+const { requireAdmin } = require('../middleware/admin');
 
 router.post('/', createTask)
 
