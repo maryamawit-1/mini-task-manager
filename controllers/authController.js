@@ -6,9 +6,6 @@ const asyncHandler = require('../utils/asyncHandler')
 
 const login = asyncHandler( async(req, res)=>{
     const {email, password} = req.body;
-    if(!email || !password){
-        return res.status(400).json({msg: "Please enter both email and password" })
-    }
     let connection
 
     try {
@@ -36,9 +33,6 @@ const login = asyncHandler( async(req, res)=>{
 
 const register =asyncHandler( async (req, res)=>{
  const{name, email, password} = req.body;
-    if(!name ||!email || !password){
-        return res.status(400).json({msg: "All fields are required" })
-    }
    
     const [existing]= await pool.query('select id from users where email =? ', [email])
     

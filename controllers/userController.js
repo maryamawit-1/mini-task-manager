@@ -5,18 +5,8 @@ const jwt= require('jsonwebtoken')
 const asyncHandler = require('../utils/asyncHandler')
 
 const createUser = asyncHandler (async (req, res)=>{
-
     
     const{name, role, email, password} = req.body;
-    if(!name || !role ||!email || !password){
-        return res.status(400).json({msg: "All fields are required" })
-    }
-
-    const allowedRoles= ["admin", "member"];
-    if(!allowedRoles.includes(role)){
-        return res.status(400).json({msg: "incorrect value for role"})
-    }
-   
     const [existing]= await pool.query('select id from users where email =? ', [email])
     
     if(existing.length>0){
@@ -39,10 +29,6 @@ const createUser = asyncHandler (async (req, res)=>{
 const getUserById = asyncHandler( async (req, res)=>{
     const id= Number(req.params.id);
 
-    if(!id || isNaN(id) || id<= 0)
-        return res.status(400).json({msg: "incorrect input"});
-
-
     const[rows]= await pool.query('select id, name, role from users where id= ?', [id]);
     if(rows.length === 0){
         return res.status(404).json({msg: "user not found"});
@@ -60,16 +46,9 @@ const getAllUsers = asyncHandler(async (req, res)=>{
 
 
 const updateUser = asyncHandler(async (req, res)=>{
-const id= Number(req.params.id);
-    if(!id || isNaN(id) || id<= 0)
-        return res.status(400).json({msg: "incorrect input"});
+    const id= Number(req.params.id);
 
     const{name, role, email, password} = req.body;
-    const allowedRoles= ["admin", "member"];
-    if(role && !allowedRoles.includes(role)){
-        return res.status(400).json({ msg: "Invalid role" });
-    }
-    
     let connection;
     try {
         connection = await pool.getConnection();
@@ -119,9 +98,6 @@ const id= Number(req.params.id);
 const deleteUser = asyncHandler( async (req, res)=>{
 const id= Number(req.params.id);
     const currentUserId= req.user.id;
-    if(!id || isNaN(id) || id<= 0)
-        return res.status(400).json({msg: "incorrect input"});
-
     if (currentUserId === id) {
         return res.status(400).json({ msg: "admin cannot delete himself" });
     }

@@ -51,10 +51,6 @@ const getTasks = asyncHandler(async(req, res)=>{
 
 const getTaskById = asyncHandler(async (req, res)=>{
     const id= Number(req.params.id);
-
-    if(!id || isNaN(id) || id<= 0)
-            return res.status(400).json({msg: "incorrect input"});
-
    
     const [results]= await pool.query(`
             select 
@@ -81,22 +77,9 @@ const getTaskById = asyncHandler(async (req, res)=>{
 
 
 const updateTask = asyncHandler( async (req, res)=>{
-const id= Number(req.params.id);
-    if(!id || isNaN(id) || id<= 0)
-            return res.status(400).json({msg: "incorrect input"});
-
-    const {title, description, status, priority, dueDate, newAssignedUserId}= req.body;
-    const allowedStatuses= ["todo", "in-progress", "done"]
-    if(status !== undefined && !allowedStatuses.includes(status)){
-        return res.status(400).json({msg: "Status must be todo, in-progress, or done"})
-    }
-
-    const allowedPriority= ["low", "medium", "high"]
-    if(priority !== undefined && !allowedPriority.includes(priority)){
-        return res.status(400).json({msg: "Status must be low, meduium or high"})
-    }
+    const id= Number(req.params.id);
     const currentUserId=  req.user.id
-
+    const { title, description, status, priority, dueDate, newAssignedUserId } = req.body;
     let connection
     try {
         connection = await pool.getConnection();
@@ -200,16 +183,9 @@ const id= Number(req.params.id);
 })
 
 const deleteTask = asyncHandler( async (req, res)=>{
-const id= Number(req.params.id);
-
+    const id= Number(req.params.id);
     const currentUserId=  req.user.id;
 
-    if(!id || isNaN(id) || id<= 0)
-        return res.status(400).json({msg: "incorrect input"});
-
-    if (!currentUserId || isNaN(currentUserId) || currentUserId <= 0) {
-        return res.status(400).json({ msg: "Invalid user" });
-    }
     let connection;
     try {
         connection= await pool.getConnection();
