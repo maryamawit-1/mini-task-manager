@@ -1,8 +1,12 @@
-const tasks = require('../tasks');
-const users= require('../users')
-const pool= require('../db')
 
-async function createUser(req, res){
+const pool= require('../db')
+const bcrypt= require('bcrypt');
+const jwt= require('jsonwebtoken')
+const asyncHandler = require('../utils/asyncHandler')
+
+const createUser = asyncHandler (async (req, res)=>{
+
+    
     const{name, role, email, password} = req.body;
     if(!name || !role ||!email || !password){
         return res.status(400).json({msg: "All fields are required" })
@@ -12,73 +16,51 @@ async function createUser(req, res){
     if(!allowedRoles.includes(role)){
         return res.status(400).json({msg: "incorrect value for role"})
     }
-    let connection;
-    try{
-        connection= await pool.getConnection();
-        const [existing]= await connection.query('select id from users where email =? ', [email])
-        if(existing.length>0){
-            connection.release();
-            return res.stataus(400).json({msg: "Email already exists"})
-        }
-        const [result]= await connection.query('insert into users (name, role, email, password) values(?, ?, ?, ?)', [name, role, email, password])
-        connection.release();
-        const user= {id: result.insertId,
+   
+    const [existing]= await pool.query('select id from users where email =? ', [email])
+    
+    if(existing.length>0){
+        return res.status(400).json({msg: "Email already exists"})
+    }
+    const hash = await bcrypt.hash(password, 10)
+    const [result]= await pool.query('insert into users (name, role, email, password) values(?, ?, ?, ?)', [name, role, email, hash])
+    const user= {id: result.insertId,
                 name,
                 role
             };
     
-        res.status(201).json({
-            msg: "User created successfully", user 
-            });
-    }catch(error){
-        console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
-        if(connection)  connection.release();
-    }
+    res.status(201).json({
+        msg: "User created successfully", user 
+    });
     
-    
-    
-}
+})
 
-async function getUserById (req, res){
+
+const getUserById = asyncHandler( async (req, res)=>{
     const id= Number(req.params.id);
 
     if(!id || isNaN(id) || id<= 0)
         return res.status(400).json({msg: "incorrect input"});
 
-    let connection;
-    try{
-        connection= await pool.getConnection();
-        const[rows]= await connection.query('select id, name, role from users where id= ?', [id]);
-        if(rows.length === 0){
-            return res.status(404).json({msg: "user not found"});
-        }
-        res.status(200).json(rows[0]);
-    }catch(error){
-        console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
-        if(connection)  connection.release();
-    }    
-}
 
-async function getAllUsers (req, res){
-    let connection;
-    try{
-        connection= await pool.getConnection();
-        const[rows] = await connection.query('select id, name, role from users')
-        res.status(200).json(rows);
-    }catch(err){
-        console.error(err);
-        res.status(500).json({msg: "server error"})
-    }finally{
-        if(connection)  connection.release();
-    } 
-}
+    const[rows]= await pool.query('select id, name, role from users where id= ?', [id]);
+    if(rows.length === 0){
+        return res.status(404).json({msg: "user not found"});
+    }
+    res.status(200).json(rows[0]);
+   
+})
 
-async function updateUser (req, res){
-    const id= Number(req.params.id);
+
+const getAllUsers = asyncHandler(async (req, res)=>{
+    const[rows] = await pool.query('select id, name, role from users')
+    res.status(200).json(rows);
+    
+})
+
+
+const updateUser = asyncHandler(async (req, res)=>{
+const id= Number(req.params.id);
     if(!id || isNaN(id) || id<= 0)
         return res.status(400).json({msg: "incorrect input"});
 
@@ -87,6 +69,7 @@ async function updateUser (req, res){
     if(role && !allowedRoles.includes(role)){
         return res.status(400).json({ msg: "Invalid role" });
     }
+    
     let connection;
     try {
         connection = await pool.getConnection();
@@ -111,10 +94,9 @@ async function updateUser (req, res){
             values.push(email)
         }
         if(password !== undefined){
-            // const bcrypt = require("bcrypt");
-            // const hashed = await bcrypt.hash(password, 10);
+            const hashed= await bcrypt.hash(password, 10)
             updates.push("password = ?");
-            values.push(password);
+            values.push(hashed);
         }
         if(updates.length=== 0){
             return res.status(400).json({ msg: "No fields to update" });
@@ -128,22 +110,19 @@ async function updateUser (req, res){
         })
         
         
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({msg: "server error"})
     }finally{
         if(connection)  connection.release();
     }
 
-}
+})
 
-async function deleteUser (req, res){
-    const id= Number(req.params.id);
-    const currentUserId= req.header('currentUserId');
+const deleteUser = asyncHandler( async (req, res)=>{
+const id= Number(req.params.id);
+    const currentUserId= req.user.id;
     if(!id || isNaN(id) || id<= 0)
         return res.status(400).json({msg: "incorrect input"});
 
-    if (currentUserId.id === id) {
+    if (currentUserId === id) {
         return res.status(400).json({ msg: "admin cannot delete himself" });
     }
 
@@ -169,11 +148,10 @@ async function deleteUser (req, res){
         }
         res.status(200).json({msg: "User deleted successfully"})
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({msg: "server error"})
     }finally{
         if(connection)  connection.release();
     }
-}
+
+})
+
 module.exports={createUser, getAllUsers, getUserById, updateUser, deleteUser}

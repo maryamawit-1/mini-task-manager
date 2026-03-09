@@ -1,83 +1,31 @@
-const tasks = require('../tasks');
-const users= require('../users')
+
 const pool= require('../db')
-async function validateTask(data){
-    const errors=[];
+const asyncHandler = require('../utils/asyncHandler')
 
-    const allowedProperites= ["low", "medium", "high"];
-    const allowedStatuses= ["todo", "in-progress", "done"]
+const createTask = asyncHandler( async (req, res)=>{
+    const creatorId = req.user.id
 
-    if(!data.title) errors.push("Title is required");
-    if(!data.description) errors.push("Description is required");
-
-    if(!allowedProperites.includes(data.priority)){
-        errors.push("Priority must be low, medium, or high")
-    }
-
-    if(!allowedStatuses.includes(data.status)){
-        errors.push("Status must be todo, in-progress, or done")
-    }
-    const assignedUserId = Number(data.assignedUserId);
-    const creatorId = Number(data.creatorId);
-    let connection;
-    try {
-        connection= await pool.getConnection();
-      const [rows]= await connection.query('select id from users where id= ?', [assignedUserId])
-      const[users]= await connection.query('select id from users where id= ?', [creatorId])
-        if (isNaN(assignedUserId)) {
-            errors.push("assignedUserId must be a number");
-        }else if(rows.length === 0){
-            errors.push("Assigned user does not exist");}
-        if (isNaN(creatorId)) {
-            errors.push("creatorId must be a number");
-        }else if(users.length === 0){
-            errors.push("creator does not exits")
-  }
-        return errors;
-    } catch (error) {
-        console.error(error);
-        return ["Server validation error"];
-    }finally{
-        if(connection)  connection.release();
-    }   
-  }
-
-
-async function createTask (req, res){
     const {
         title, 
         description, 
         status, 
         priority, 
         assignedUserId, 
-        creatorId, 
         dueDate
     }= req.body
-    const errors = await validateTask(req.body, users);
-   
-    if(errors.length>0){
-     return res.status(400).json({errors})
-    }
-    
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        const [rows]= await connection.query('insert into tasks (title, description, status, priority, assigned_user_id, creator_id, due_date) values(?, ?, ?, ?, ?, ?, ?)', [title, description, status, priority, assignedUserId, creatorId, dueDate]);
-        res.status(201).json({
-        msg: "task created successfully"
+
+    const [result]= await pool.query('insert into tasks (title, description, status, priority, assigned_user_id, creator_id, due_date) values(?, ?, ?, ?, ?, ?, ?)', [title, description, status, priority, assignedUserId, creatorId, dueDate]);
+
+    res.status(201).json({
+        msg: "task created",
+        taskId: result.insertId
     })
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
-        if(connection)  connection.release();
-    }
-   
-}
+
+})
 
 
-async function getTasks (req, res){
-    let connection;
+const getTasks = asyncHandler(async(req, res)=>{
+  let connection;
     try {
         connection = await pool.getConnection();
         const [results]= await connection.query(`
@@ -96,23 +44,19 @@ async function getTasks (req, res){
             join users c on t.creator_id = c.id`
         );
         return res.status(200).json(results);
-    } catch (error) {
-         console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
+    } finally{
         if(connection)  connection.release();
     }
-}
-async function getTaskById (req, res){
+})
+
+const getTaskById = asyncHandler(async (req, res)=>{
     const id= Number(req.params.id);
 
     if(!id || isNaN(id) || id<= 0)
             return res.status(400).json({msg: "incorrect input"});
 
-    let connection
-    try {
-        connection= await pool.getConnection();
-        const [results]= await connection.query(`
+   
+    const [results]= await pool.query(`
             select 
                 t.id, 
                 t.title, 
@@ -128,20 +72,16 @@ async function getTaskById (req, res){
             join users c on t.creator_id = c.id
             where t.id= ?`, [id]
         );
-        if(results.length === 0){
-            return res.status(404).json({msg: "task not found"});
-        }
-        return res.status(200).json(results[0])
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
-        if(connection)  connection.release();
+    if(results.length === 0){
+        return res.status(404).json({msg: "task not found"});
     }
-}
+    return res.status(200).json(results[0])
+} 
+) 
 
-async function updateTask (req, res){
-    const id= Number(req.params.id);
+
+const updateTask = asyncHandler( async (req, res)=>{
+const id= Number(req.params.id);
     if(!id || isNaN(id) || id<= 0)
             return res.status(400).json({msg: "incorrect input"});
 
@@ -155,7 +95,7 @@ async function updateTask (req, res){
     if(priority !== undefined && !allowedPriority.includes(priority)){
         return res.status(400).json({msg: "Status must be low, meduium or high"})
     }
-    const currentUserId= Number(req.header('currentUserId'))
+    const currentUserId=  req.user.id
 
     let connection
     try {
@@ -172,9 +112,9 @@ async function updateTask (req, res){
         }
 
         const user = userRows[0];
-        const isCreator= task.creator_id === currentUserId;
+        const isCreator= task.creator_id === req.user.id;
         const isAdmin = user.role === "admin"
-        const isAssignedUser= currentUserId === task.assigned_user_id
+        const isAssignedUser= req.user.id === task.assigned_user_id
 
         if(isCreator || isAdmin){
 
@@ -205,7 +145,7 @@ async function updateTask (req, res){
                 reassigned = true;
             }
             if(status !== undefined && !reassigned) 
-                await connection.query('update tasks set status= ?', [status])
+                await connection.query('update tasks set status= ?  where id= ?', [status, id])
             
             values.push(id)
             const sql =`update tasks set ${updates.join(", ")} where id=?`
@@ -253,19 +193,16 @@ async function updateTask (req, res){
              return res.status(403).json({msg: "can't update task"})
     }
 
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({msg: "server error"})
-    }finally{
+    } finally{
         if(connection)  connection.release();
     } 
     
-}
+})
 
-async function deleteTask (req, res){
-    const id= Number(req.params.id);
+const deleteTask = asyncHandler( async (req, res)=>{
+const id= Number(req.params.id);
 
-    const currentUserId= Number(req.header('currentUserId'));
+    const currentUserId=  req.user.id;
 
     if(!id || isNaN(id) || id<= 0)
         return res.status(400).json({msg: "incorrect input"});
@@ -300,7 +237,8 @@ async function deleteTask (req, res){
         if(connection)  connection.release();
     } 
 
-}
+})
+
 
 
 

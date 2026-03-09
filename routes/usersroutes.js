@@ -1,14 +1,11 @@
 const router=require('express').Router();
-const {requireAdmin}= require('../middleware/admin')
+const {authenticate, authorize} = require('../middleware/authMiddleware')
 
 const {createUser, getAllUsers, getUserById, updateUser, deleteUser }= require("../controllers/userController")
-/*POST /users
-Headers: { "currentUserId": 1 }
-Body: { "name": "Alice", "role": "member" } */
 
-router.post('/',requireAdmin, createUser);
-router.get('/', getAllUsers)
-router.get('/:id', getUserById)
-router.put('/:id', requireAdmin, updateUser)
-router.delete('/:id', requireAdmin,deleteUser)
+router.post('/',authenticate, authorize("admin"), createUser);
+router.get('/', authenticate ,getAllUsers)
+router.get('/:id', authenticate ,getUserById)
+router.put('/:id', authenticate, authorize("admin"), updateUser)
+router.delete('/:id', authenticate, authorize("admin"),deleteUser)
 module.exports= router;
