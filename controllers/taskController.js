@@ -1,7 +1,7 @@
 
 const pool= require('../db')
 const asyncHandler = require('../utils/asyncHandler')
-
+const buildTaskQuery = require('../utils/taskFilters')
 const createTask = asyncHandler( async (req, res)=>{
     const creatorId = req.user.id
 
@@ -27,23 +27,23 @@ const createTask = asyncHandler( async (req, res)=>{
 const getTasks = asyncHandler(async(req, res)=>{
   let connection;
     try {
-        connection = await pool.getConnection();
-        const [results]= await connection.query(`
-            select 
-                t.id, 
-                t.title, 
-                t.description, 
-                t.status, 
-                t.priority, 
-                u.id AS assigned_user_id, 
-                u.name AS assigned_user_name, 
-                c.id AS creator_id, 
-                c.name AS creator_name 
-            from tasks t 
-            join users u on t.assigned_user_id =u.id 
-            join users c on t.creator_id = c.id`
-        );
-        return res.status(200).json(results);
+        const{ page= 1, limit= 5, priority, status, assignedUserId, creatorId, dueBefore, dueAfter} = req.query
+        
+        const filters= {status, priority, assignedUserId, creatorId, dueBefore, dueAfter}
+
+        const offset= (page -1)* limit
+        const {sql, params, countSql, countParams} = buildTaskQuery(filters, Number(limit), Number(offset))
+         
+        const [tasks] = await pool.query(sql, params)
+        const [[{total}]] = await pool.query(countSql, countParams)
+        const totalPages= Math.ceil(total/limit)
+        return res.status(200).json({
+            page: Number(page),
+            limit: Number(limit),
+            totalPages,
+            totalResults:total,
+            results: tasks
+        });
     } finally{
         if(connection)  connection.release();
     }

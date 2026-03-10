@@ -5,7 +5,7 @@ const jwt= require('jsonwebtoken')
 const asyncHandler = require('../utils/asyncHandler')
 
 const createUser = asyncHandler (async (req, res)=>{
-    
+
     const{name, role, email, password} = req.body;
     const [existing]= await pool.query('select id from users where email =? ', [email])
     
@@ -39,9 +39,36 @@ const getUserById = asyncHandler( async (req, res)=>{
 
 
 const getAllUsers = asyncHandler(async (req, res)=>{
-    const[rows] = await pool.query('select id, name, role from users')
-    res.status(200).json(rows);
+    const{limit = 5, page =1, role } = req.query
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit)
+    const offset = (pageNum-1) * limitNum
+    let sql= `select id, name, role from users where 1=1`
+    const params =[]
+    let countSql = `select count(*) as total from users where 1=1`
+    const countParams= []
     
+    if(role){
+        sql +=" AND role= ?"
+        params.push(role)
+        countSql += " AND role= ?"
+        countParams.push(role)
+    }
+    sql += " limit ? offset ?"
+    params.push(limitNum, offset)
+    
+    const[[{total}]]=await pool.query(countSql, countParams)
+    const totalPages= Math.ceil(total/limitNum)
+    const[rows] = await pool.query(sql, params)
+    res.status(200).json({
+        page: Number(page),
+        limit: Number(limit),
+        totalPages,
+        totalResults: total,
+        results: rows
+    });
+
 })
 
 
