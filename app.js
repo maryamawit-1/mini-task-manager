@@ -1,12 +1,16 @@
 const express= require('express');
 const errorHandler = require('./middleware/errorMiddleware')
-const app= express();
+const notFound = require('./middleware/notFoundMiddleware')
+const apiLimiter = require('./middleware/rateLimiter')
 
 const useroutes= require('./routes/usersroutes')
 const tasksroute= require('./routes/tasksroute')
 const authroute= require('./routes/authroute')
-const notFound = require('./middleware/notFoundMiddleware')
+
+const app= express();
+
 app.use(express.json())
+app.use(apiLimiter)
 
 app.use("/users", useroutes);
 app.use("/tasks", tasksroute)
