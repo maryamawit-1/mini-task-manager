@@ -1,26 +1,34 @@
 
-const pool= require('../db')
 const bcrypt= require('bcrypt');
 const jwt= require('jsonwebtoken')
 const asyncHandler = require('../utils/asyncHandler')
+const {User, Task} = require('../models')
 
 const createUser = asyncHandler (async (req, res)=>{
 
     const{name, role, email, password} = req.body;
-    const [existing]= await pool.query('select id from users where email =? ', [email])
+
+    const existing = await User.findOne({where: {email}})
     
-    if(existing.length>0){
+    if(existing){
         return res.status(400).json({msg: "Email already exists"})
     }
     const hash = await bcrypt.hash(password, 10)
-    const [result]= await pool.query('insert into users (name, role, email, password) values(?, ?, ?, ?)', [name, role, email, hash])
-    const user= {id: result.insertId,
-                name,
-                role
-            };
+    const newUser = await User.create({
+        name,
+        role,
+        email,
+        password: hash
+    })
+   
     
     res.status(201).json({
-        msg: "User created successfully", user 
+        msg: "User created successfully", 
+        user : {
+            id: newUser.id,
+            name: newUser.name,
+            role: newUser.role
+        }
     });
     
 })
@@ -29,11 +37,13 @@ const createUser = asyncHandler (async (req, res)=>{
 const getUserById = asyncHandler( async (req, res)=>{
     const id= Number(req.params.id);
 
-    const[rows]= await pool.query('select id, name, role from users where id= ?', [id]);
-    if(rows.length === 0){
+    const user = await User.findByPk(id, {
+        attributes: ['id', 'name', 'role', 'email']
+    })
+    if(!user){
         return res.status(404).json({msg: "user not found"});
     }
-    res.status(200).json(rows[0]);
+    res.status(200).json(user);
    
 })
 
@@ -44,28 +54,24 @@ const getAllUsers = asyncHandler(async (req, res)=>{
     const pageNum = Number(page);
     const limitNum = Number(limit)
     const offset = (pageNum-1) * limitNum
-    let sql= `select id, name, role from users where 1=1`
-    const params =[]
-    let countSql = `select count(*) as total from users where 1=1`
-    const countParams= []
+
+    const whereClause = {}
     
-    if(role){
-        sql +=" AND role= ?"
-        params.push(role)
-        countSql += " AND role= ?"
-        countParams.push(role)
-    }
-    sql += " limit ? offset ?"
-    params.push(limitNum, offset)
-    
-    const[[{total}]]=await pool.query(countSql, countParams)
-    const totalPages= Math.ceil(total/limitNum)
-    const[rows] = await pool.query(sql, params)
+    if(role) whereClause.role = role
+
+    const {count, rows} = await User.findAndCountAll({
+        where: whereClause,
+        limit: limitNum,
+        offset: offset,
+        attributes: ['id', 'name', 'role', 'email'],
+        order: [['name', 'ASC']]
+    })
+
     res.status(200).json({
         page: Number(page),
-        limit: Number(limit),
-        totalPages,
-        totalResults: total,
+        limit: limitNum,
+        totalPages: Math.ceil(count / limitNum),
+        totalResults: count,
         results: rows
     });
 
@@ -76,49 +82,38 @@ const updateUser = asyncHandler(async (req, res)=>{
     const id= Number(req.params.id);
 
     const{name, role, email, password} = req.body;
-    let connection;
-    try {
-        connection = await pool.getConnection();
-        const [rows]= await connection.query('select id from users where id= ?', [id])
 
-        if(rows.length === 0){
-            return res.status(404).json({msg: "user not found"});
-        }
-        const updates=[];
-        const values=[];
-        if(name !== undefined){
-            updates.push("name= ?");
-            values.push(name);
-        }
-       
-        if(role !== undefined){
-            updates.push("role= ?");
-            values.push(role)
-        }
-        if(email !== undefined){
-            updates.push("email= ?")
-            values.push(email)
-        }
-        if(password !== undefined){
-            const hashed= await bcrypt.hash(password, 10)
-            updates.push("password = ?");
-            values.push(hashed);
-        }
-        if(updates.length=== 0){
-            return res.status(400).json({ msg: "No fields to update" });
-        }
-        values.push(id);
-        const sql= `update users set ${updates.join(", ")} where id= ?`;
-        await connection.query(sql, values);
-        const [updatedRows]= await connection.query('select id, name, role, email from users where id= ?' , [id]);
+    const user= await User.findByPk(id)
+        
+    if(!user){
+        return res.status(404).json({msg: "user not found"});
+    }
+
+    const updateData ={}
+
+    const updates=[];
+    const values=[];
+    if(name !== undefined) updateData.name = name
+    if(role !== undefined) updateData.role = role
+    if(email !== undefined) updateData.email =  email
+    if(password !== undefined){
+        updateData.password = await bcrypt.hash(password, 10)
+    }
+    
+    if(Object.keys(updateData).length=== 0){
+        return res.status(400).json({ msg: "No fields to update" });
+    }
+    
+    await user.update(updateData)
         res.status(200).json({msg:"user updated successfully", 
-            user: updatedRows[0]
+            user: {
+                id: user.id,
+                name: user.name,
+                role: user.role,
+                email: user.email
+            }
         })
         
-        
-    }finally{
-        if(connection)  connection.release();
-    }
 
 })
 
@@ -129,32 +124,23 @@ const id= Number(req.params.id);
         return res.status(400).json({ msg: "admin cannot delete himself" });
     }
 
-    let connection;
-    try {
-        connection = await pool.getConnection()
-        const[users]= await connection.query('select id from users where id= ?', [id])
-        if(users.length === 0){
-            return res.status(404).json({msg: "user not found"})
-        }
-        const[tasks]= await connection.query('select id from tasks where assigned_user_id = ?', [id])
-        if(tasks.length !== 0){
-            return res.status(400).json({
-            msg: "Cannot delete user. User is assigned to active tasks"
-        })
-        }
-    
-        await connection.query('update tasks set creator_id = ? where creator_id = ?', [currentUserId, id])
-        const[result]= await connection.query('delete from users where id= ?', [id])
+    const user = await User.findByPk(id)
+    if(!user){
+        return res.status(404).json({msg: "user not found"})
+    }
+    const taskAssinged = await Task.findOne({ where: { assigned_user_id: id}})
 
-        if(result.affectedRows === 0){
-            return res.status(400).json({msg: "no product found with that id"})
-        }
-        res.status(200).json({msg: "User deleted successfully"})
-
-    }finally{
-        if(connection)  connection.release();
+    if(taskAssinged){
+        return res.status(400).json({
+        msg: "Cannot delete user. User is assigned to active tasks"})
     }
 
+    await Task.update(
+        {creatorId: currentUserId},
+        {where: {creatorId: id}})
+    await user.destroy()
+
+     res.status(200).json({ msg: "User deleted successfully" })
 })
 
 module.exports={createUser, getAllUsers, getUserById, updateUser, deleteUser}

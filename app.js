@@ -1,5 +1,6 @@
 const express= require('express');
 const {swaggerDocs} = require('./utils/swagger')
+const {sequelize} = require('./models')
 const errorHandler = require('./middleware/errorMiddleware')
 const notFound = require('./middleware/notFoundMiddleware')
 const apiLimiter = require('./middleware/rateLimiter')
@@ -25,6 +26,9 @@ app.use("/auth", authroute)
 app.use(notFound) 
 app.use(errorHandler)
 
+sequelize.authenticate()
+  .then(() => console.log('✅ Sequelize connected to MySQL.'))
+  .catch(err => console.error('❌ Sequelize connection error:', err));
 
 app.listen(PORT, ()=>{
     console.log(`Server is running on port ${PORT}`)

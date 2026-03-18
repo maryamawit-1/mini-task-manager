@@ -1,54 +1,49 @@
-const pool= require('../db')
 const bcrypt= require('bcrypt');
 const jwt= require('jsonwebtoken')
+const {User} = require('../models')
 const asyncHandler = require('../utils/asyncHandler')
 
 
 const login = asyncHandler( async(req, res)=>{
     const {email, password} = req.body;
-    let connection
-
-    try {
-        connection = await pool.getConnection()
-        const [rows] = await connection.query('select * from users where email = ?', [email])
-        const user= rows[0]
-        if (!user) {
+    const user= await User.findOne({where : {email}})
+    if (!user) {
         return res.status(401).json({ msg: "Invalid credentials" });
-        }
-        const isMatch = await bcrypt.compare(password, user.password)
+    }
+    const isMatch = await bcrypt.compare(password, user.password)
 
-        if(!isMatch){
-            return res.status(401).json({ msg: "Invalid credentials" });
-        }
+    if(!isMatch){
+        return res.status(401).json({ msg: "Invalid credentials" });
+    }
 
-        const token = jwt.sign({id: user.id, role: user.role}, process.env.JWT_SECRET, {expiresIn: "15m"})
+    const token = jwt.sign({id: user.id, role: user.role}, process.env.JWT_SECRET, {expiresIn: "15m"})
         res.json({
         msg: "Login successful",
         token,
-        });
-    }finally{
-        if(connection)  connection.release();
-    }
+    });
+    
 })
 
 const register =asyncHandler( async (req, res)=>{
  const{name, email, password} = req.body;
    
-    const [existing]= await pool.query('select id from users where email =? ', [email])
-    
-    if(existing.length>0){
+    const existingUser = await User.findOne({ where: {email}})
+    if(existingUser){
         return res.status(400).json({msg: "Email already exists"})
     }
     const role="member"
     const hash = await bcrypt.hash(password, 10)
-    const [result]= await pool.query('insert into users (name, role, email, password) values(?, ?, ?, ?)', [name, role, email, hash])
-    const user= {id: result.insertId,
-                name,
-                role
-            };
+
+    const newUser = await User.create({ name, email, password: hash, role})
+
     
     res.status(201).json({
-        msg: "User created successfully", user 
+        msg: "User created successfully", 
+        user: {
+            id: newUser.id,
+            name: newUser.name,
+            role: newUser.role
+        }
     });
 })
 
